@@ -29,6 +29,13 @@ def spark_download_url(version):
         return f"{SPARK_BASE_URL}/spark-{version}/spark-{version}-bin-hadoop3.tgz"
 
 
+def spark_file_name(version) -> str:
+    minor = _parse_version(version)[1]
+    if minor <= 2:
+        return f"spark-{version}-bin-hadoop3.2.tgz"
+    return f"spark-{version}-bin-hadoop3.tgz"
+
+
 def validate_and_check_version(version):
     '''
     Checks format and existence of tgz Spark distributive with specified version
@@ -82,25 +89,42 @@ def upload_distributive(version, client: Client, ignore_existing: bool, distrib_
     client.write_file(distrib_bytes, distrib_path)
 
 
-def main(versions, root, ignore_existing, use_cache):
+def upload_distributive_fs(version, client: Client, ignore_existing: bool, base_fs_path: str):
+    logger.info(f"Uploading Spark {version} distributive")
+    filename = spark_file_name(version=version)
+    maj, min, patch = _parse_version(version)
+    distrib_root = spark_distrib_remote_dir(maj, min, patch)
+    distrib_path = f"{distrib_root}/{filename}"
+    if client.exists(distrib_path) and not ignore_existing:
+        logger.info(f"Spark {version} distributive already exists")
+        return
+
+    client.mkdir(distrib_root, ignore_existing=ignore_existing)
+
+    fs_file_path = os.path.abspath(base_fs_path) + "/" + filename
+    with open(fs_file_path, 'rb') as f:
+        content = f.read()
+
+    client.write_file(content, distrib_path)
+
+
+def main(versions, root, ignore_existing, base_fs_path):
     logger.info(f"{versions} versions of Spark will be deployed")
-    for version in versions:
-        validate_and_check_version(version)
 
     client = Client(ClientBuilder(root_path=root))
 
     for version in versions:
-        upload_distributive(version, client, ignore_existing, use_cache=use_cache)
+        upload_distributive_fs(version, client, ignore_existing, base_fs_path)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Spark distributive publisher")
     parser.add_argument("--root", default="//home/spark", type=str, help="Root spyt path on YTsaurus cluster")
+    parser.add_argument("--base-fs-path", default="/data", type=str, help="Root fs binary path")
     parser.add_argument('--ignore-existing', action='store_true',
                         dest='ignore_existing', help='Overwrite cluster files')
     parser.set_defaults(ignore_existing=False)
-    parser.add_argument("--use-cache", action='store_true', help='Cache downloaded Spark archives')
     parser.add_argument("versions", metavar="version", type=str, nargs='*', help="Spark version formatted as X.X.X")
 
     args = parser.parse_args()
-    main(args.versions, args.root, args.ignore_existing, args.use_cache)
+    main(args.versions, args.root, args.ignore_existing, args.base_fs_path)
