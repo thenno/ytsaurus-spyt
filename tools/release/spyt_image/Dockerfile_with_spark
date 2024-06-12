@@ -1,6 +1,12 @@
 FROM ghcr.io/ytsaurus/spyt:2.0.0
 
+ARG REPO_PATH
+ARG COMMIT_ID
+
 COPY ./spyt_image/spark-3.2.2-bin-hadoop3.2.tgz /data/
 COPY ./publisher/spark_distrib.py /scripts/spark_distrib.py 
+
+LABEL org.opencontainers.image.source=$REPO_PATH
+LABEL org.opencontainers.image.revision=$COMMIT_ID
+
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
-#ENTRYPOINT ["/bin/bash"]
